@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+*.log
+coverage/
+.DS_Store
+prisma/dev.db
+
+# Harness / editor local state
+.claude/

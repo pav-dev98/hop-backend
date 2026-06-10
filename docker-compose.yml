@@ -1,0 +1,43 @@
+services:
+  db:
+    image: docker.io/library/postgres:16
+    container_name: peace-houses-db
+    environment:
+      POSTGRES_USER: peace
+      POSTGRES_PASSWORD: peace
+      POSTGRES_DB: peace_houses
+    # Puerto interno 5432 (usado por la app vía red de compose). En el host se
+    # publica en 5433 para no chocar con otro Postgres que ya usa el 5432.
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U peace -d peace_houses"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: peace-houses-api:latest
+    container_name: peace-houses-api
+    environment:
+      DATABASE_URL: postgresql://peace:peace@db:5432/peace_houses
+      JWT_SECRET_KEY: change-me-in-production-min-32-characters
+      JWT_EXPIRES_IN: 24h
+      FRONTEND_URL: http://localhost:5173
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3001
+      PORT: 3000
+      NODE_ENV: production
+      SEED_ON_START: "true"
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model People {
+  id           Int      @id @default(autoincrement())
+  name         String
+  lastName     String   @map("last_name")
+  phoneNumber  String?  @map("phone_number")
+  email        String?
+  birthDate    DateTime? @map("birth_date")
+  address      String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user         User?
+  member       Member?
+  ledHouses    House[]       @relation("HouseLeader")
+  attendances  Attendance[]
+
+  @@map("peoples")
+}
+
+model User {
+  id             Int      @id @default(autoincrement())
+  email          String   @unique
+  passwordHash   String   @map("password_hash")
+  role           Role     @default(LEADER)
+  personalDataId Int      @unique @map("personal_data_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  personalData   People   @relation(fields: [personalDataId], references: [id])
+
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  LEADER
+}
+
+model House {
+  id          Int      @id @default(autoincrement())
+  name        String
+  address     String?
+  leaderId    Int?     @map("leader_id")
+  meetingDay  String?  @map("meeting_day")
+  startTime   String?  @map("start_time")
+  endTime     String?  @map("end_time")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  leader      People?   @relation("HouseLeader", fields: [leaderId], references: [id])
+  members     Member[]
+  meetings    Meeting[]
+
+  @@map("houses")
+}
+
+model Member {
+  id             Int      @id @default(autoincrement())
+  personalDataId Int      @unique @map("personal_data_id")
+  houseId        Int      @map("house_id")
+  memberType     MemberType @default(MEMBER) @map("member_type")
+  active         Boolean  @default(true)
+  joinDate       DateTime @default(now()) @map("join_date")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  personalData   People   @relation(fields: [personalDataId], references: [id])
+  house          House    @relation(fields: [houseId], references: [id])
+
+  @@map("members")
+}
+
+enum MemberType {
+  LEADER
+  MEMBER
+}
+
+model Meeting {
+  id          Int           @id @default(autoincrement())
+  houseId     Int           @map("house_id")
+  date        DateTime      @db.Date
+  startTime   String?       @map("start_time")
+  endTime     String?       @map("end_time")
+  status      MeetingStatus @default(SCHEDULED)
+  topic       String?
+  notes       String?
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  house        House        @relation(fields: [houseId], references: [id])
+  attendances  Attendance[]
+
+  @@map("meetings")
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+model Attendance {
+  id                    Int      @id @default(autoincrement())
+  meetingId             Int      @map("meeting_id")
+  memberId              Int?     @map("member_id")
+  peopleId              Int      @map("people_id")
+  isGuest               Boolean  @default(false) @map("is_guest")
+  isMemberFromOtherHouse Int?    @map("is_member_from_other_house")
+  present               Boolean  @default(true)
+  arrivalTime           String?  @map("arrival_time")
+  notes                 String?
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  meeting  Meeting @relation(fields: [meetingId], references: [id])
+  people   People  @relation(fields: [peopleId], references: [id])
+
+  @@map("attendances")
+}

@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.env
+*.log
+coverage
+.DS_Store
+tests
+REAME.md
+README.md
+docker-compose.yml
