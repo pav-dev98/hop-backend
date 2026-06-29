@@ -47,11 +47,5 @@ jobs:
           aws lambda update-function-code \
             --function-name hop-backend \
             --image-uri $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG \
-            --region sa-east-1
-          aws lambda wait function-updated \
-            --function-name hop-backend \
-            --region sa-east-1
-          aws lambda update-function-configuration \
-            --function-name hop-backend \
             --architectures x86_64 \
             --region sa-east-1
