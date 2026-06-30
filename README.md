@@ -34,6 +34,12 @@ API RESTful para gestionar Casas de Paz (Peace Houses) de una iglesia. Maneja mi
 - **supertest** — tests de integración HTTP
 ### Documentación
 - **swagger-jsdoc** + **swagger-ui-express** — documentación OpenAPI en `/api-docs`
+### Despliegue
+- **AWS Lambda** — la API corre como función Lambda empaquetada en imagen de contenedor
+- **@vendia/serverless-express** — adaptador que traduce los eventos de API Gateway / Lambda al `app` de Express
+- **Amazon ECR** — registro de la imagen Docker
+- **GitHub Actions** — CI/CD: build, push a ECR y actualización de la Lambda en cada push a `main`
+- **Docker** — también se incluye un `Dockerfile` tradicional para correr la API como servicio long-running (Docker Compose / ECS / VPS)
 ---
  
 ## Estructura de carpetas
@@ -44,7 +50,8 @@ Créala exactamente así:
 peace-houses-api/
 ├── src/
 │   ├── app.ts                          # Express app setup (sin listen)
-│   ├── server.ts                       # Entry point, llama app.listen
+│   ├── server.ts                       # Entry point local, llama app.listen
+│   ├── lambda.ts                       # Entry point AWS Lambda (serverless-express)
 │   ├── controllers/
 │   │   └── v1/
 │   │       ├── auth.controller.ts
@@ -94,6 +101,13 @@ peace-houses-api/
 │   ├── auth.test.ts
 │   ├── houses.test.ts
 │   └── attendances.test.ts
+├── .github/
+│   └── workflows/
+│       └── deploy.yml               # CI/CD: build + push a ECR + update Lambda
+├── Dockerfile                       # Imagen para servicio long-running (Compose/ECS/VPS)
+├── Dockerfile.lambda                # Imagen para AWS Lambda (base public.ecr.aws/lambda/nodejs)
+├── docker-compose.yml
+├── docker-entrypoint.sh
 ├── .env.example
 ├── .env
 ├── tsconfig.json
@@ -481,6 +495,7 @@ NODE_ENV=development
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
+    "build:lambda": "tsc && cp -r node_modules dist/",
     "start": "node dist/server.js",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
@@ -501,6 +516,7 @@ NODE_ENV=development
   "dependencies": {
     "express": "^5.0.0",
     "@prisma/client": "^5.0.0",
+    "@vendia/serverless-express": "^4.12.6",
     "jsonwebtoken": "^9.0.0",
     "bcrypt": "^5.1.0",
     "zod": "^3.22.0",
@@ -520,6 +536,7 @@ NODE_ENV=development
     "typescript": "^5.0.0",
     "prisma": "^5.0.0",
     "tsx": "^4.0.0",
+    "@types/aws-lambda": "^8.10.162",
     "@types/express": "^5.0.0",
     "@types/jsonwebtoken": "^9.0.0",
     "@types/bcrypt": "^5.0.0",
@@ -559,6 +576,112 @@ NODE_ENV=development
  
 ---
  
+## Despliegue en AWS Lambda
+
+La API se despliega como una **función Lambda empaquetada en imagen de contenedor** (no como ZIP). Express se ejecuta sin cambios gracias a `@vendia/serverless-express`, que adapta los eventos de API Gateway / Lambda al `app` de Express.
+
+### Arquitectura
+
+```
+GitHub (push a main)
+   └─> GitHub Actions (.github/workflows/deploy.yml)
+         ├─ docker build -f Dockerfile.lambda  (platform linux/amd64)
+         ├─ docker push  -> Amazon ECR (repo: hop-backend)
+         └─ aws lambda update-function-code  (función: hop-backend)
+
+API Gateway / Function URL  ─>  Lambda (hop-backend)  ─>  Express app  ─>  PostgreSQL (RDS)
+```
+
+- **Región:** `sa-east-1`
+- **Repositorio ECR:** `hop-backend`
+- **Función Lambda:** `hop-backend`
+- **Arquitectura:** `x86_64` (la imagen se construye con `--platform linux/amd64`)
+
+### Entry point Lambda
+
+`src/lambda.ts` envuelve la app de Express y exporta el `handler` que invoca Lambda:
+
+```typescript
+import serverlessExpress from '@vendia/serverless-express';
+import app from './app';
+
+export const handler = serverlessExpress({ app });
+```
+
+`app.ts` no llama a `app.listen` (eso vive solo en `server.ts`, usado en local), por lo que la misma app sirve tanto para el servidor local como para Lambda.
+
+### Imagen de contenedor (`Dockerfile.lambda`)
+
+Build multi-stage sobre la imagen base oficial de AWS (`public.ecr.aws/lambda/nodejs:20`):
+
+1. **build:** instala dependencias con `npm ci`, ejecuta `npx prisma generate` y compila TypeScript a `dist/`.
+2. **runtime:** copia `node_modules`, `dist` y `prisma` al `LAMBDA_TASK_ROOT` e instala `openssl` (requerido por el query engine de Prisma).
+
+El comando de la imagen apunta al handler:
+
+```dockerfile
+CMD ["dist/lambda.handler"]
+```
+
+> El `Dockerfile` tradicional (servicio long-running con `node dist/server.js`) se mantiene para correr la API vía Docker Compose / ECS / VPS.
+
+### CI/CD con GitHub Actions
+
+El workflow `.github/workflows/deploy.yml` se dispara en cada **push a `main`** y realiza:
+
+1. **Checkout** del código.
+2. **Configura credenciales AWS** desde secrets.
+3. **Login a ECR** (`amazon-ecr-login`).
+4. **Build y push** de la imagen con dos tags: `${{ github.sha }}` y `latest`.
+5. **`aws lambda update-function-code`** apuntando la función a la imagen recién publicada (`--architectures x86_64`).
+
+#### Secrets de GitHub requeridos
+
+Configúralos en *Settings → Secrets and variables → Actions*:
+
+| Secret | Descripción |
+|--------|-------------|
+| `AWS_ACCESS_KEY_ID` | Access key del usuario/rol IAM con permisos sobre ECR y Lambda |
+| `AWS_SECRET_ACCESS_KEY` | Secret access key correspondiente |
+| `AWS_ACCOUNT_ID` | ID de la cuenta AWS, usado para componer el registry de ECR |
+
+El registry de ECR se compone como `${AWS_ACCOUNT_ID}.dkr.ecr.sa-east-1.amazonaws.com`.
+
+### Variables de entorno en Lambda
+
+Las variables de `.env` (ver sección [Variables de entorno](#variables-de-entorno)) deben configurarse en la propia función Lambda (*Configuration → Environment variables*), ya que el `.env` no se incluye en la imagen. Como mínimo:
+
+- `DATABASE_URL` — apuntando a la base PostgreSQL accesible desde Lambda (p. ej. RDS).
+- `JWT_SECRET_KEY`, `JWT_EXPIRES_IN`
+- `CORS_ORIGINS`
+- `NODE_ENV=production`
+
+> `PORT` no aplica en Lambda (no hay servidor escuchando un puerto).
+
+### Despliegue manual (opcional)
+
+Si necesitas desplegar sin el pipeline:
+
+```bash
+# 1. Build y tag de la imagen
+docker build --platform linux/amd64 -f Dockerfile.lambda \
+  -t <account-id>.dkr.ecr.sa-east-1.amazonaws.com/hop-backend:latest .
+
+# 2. Login y push a ECR
+aws ecr get-login-password --region sa-east-1 \
+  | docker login --username AWS --password-stdin <account-id>.dkr.ecr.sa-east-1.amazonaws.com
+docker push <account-id>.dkr.ecr.sa-east-1.amazonaws.com/hop-backend:latest
+
+# 3. Actualizar la función Lambda
+aws lambda update-function-code \
+  --function-name hop-backend \
+  --image-uri <account-id>.dkr.ecr.sa-east-1.amazonaws.com/hop-backend:latest \
+  --architectures x86_64 \
+  --region sa-east-1
+```
+
+---
+
 ## Orden de implementación sugerido
  
 1. Setup inicial: `package.json`, `tsconfig.json`, `.env`
