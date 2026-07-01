@@ -3,17 +3,18 @@ services:
     image: docker.io/library/postgres:16
     container_name: peace-houses-db
     environment:
-      POSTGRES_USER: peace
-      POSTGRES_PASSWORD: peace
-      POSTGRES_DB: peace_houses
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     # Puerto interno 5432 (usado por la app vía red de compose). En el host se
-    # publica en 5433 para no chocar con otro Postgres que ya usa el 5432.
+    # publica en DB_HOST_PORT (por defecto 5433) para no chocar con otro
+    # Postgres que ya use el 5432.
     ports:
-      - "5433:5432"
+      - "${DB_HOST_PORT}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U peace -d peace_houses"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -24,17 +25,16 @@ services:
       dockerfile: Dockerfile
     image: peace-houses-api:latest
     container_name: peace-houses-api
+    # Todas las variables salen del .env local.
+    env_file:
+      - .env
     environment:
-      DATABASE_URL: postgresql://peace:peace@db:5432/peace_houses
-      JWT_SECRET_KEY: change-me-in-production-min-32-characters
-      JWT_EXPIRES_IN: 24h
-      FRONTEND_URL: http://localhost:5173
-      CORS_ORIGINS: http://localhost:5173,http://localhost:3001
-      PORT: 3000
-      NODE_ENV: production
-      SEED_ON_START: "true"
+      # Override obligatorio: dentro de la red de compose la app llega a
+      # Postgres por el hostname del servicio `db` (puerto interno 5432), no por
+      # el localhost:5433 que usa el DATABASE_URL del host.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
     ports:
-      - "3000:3000"
+      - "${PORT}:${PORT}"
     depends_on:
       db:
         condition: service_healthy
