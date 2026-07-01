@@ -473,11 +473,20 @@ Implementar paginación directamente con Prisma (`skip` y `take`), sin librería
 ---
  
 ## Variables de entorno
- 
-Crear `.env.example` con:
- 
+
+Hay **dos entornos**, cada uno con su propia base de datos PostgreSQL:
+
+| Entorno | Cómo se levanta | Base de datos |
+|---------|-----------------|---------------|
+| **Local** | `docker compose up --build` | Postgres del servicio `db` de docker-compose (en host: `localhost:5433`, user/pass `peace`/`peace`, base `peace_houses`) |
+| **Producción** | AWS Lambda (imagen en ECR) | [Neon](https://neon.tech) — PostgreSQL serverless en `sa-east-1`, con `sslmode=require` |
+
+### Local (`.env`)
+
+Copia `.env.example` a `.env`. El `DATABASE_URL` apunta a la base de docker-compose:
+
 ```env
-DATABASE_URL=postgresql://user:password@localhost:5432/peace_houses_dev
+DATABASE_URL=postgresql://peace:peace@localhost:5433/peace_houses
 JWT_SECRET_KEY=your-secret-key-min-32-chars
 JWT_EXPIRES_IN=24h
 FRONTEND_URL=http://localhost:5173
@@ -485,7 +494,19 @@ CORS_ORIGINS=http://localhost:5173,http://localhost:3001
 PORT=3000
 NODE_ENV=development
 ```
- 
+
+> El `.env` está en `.gitignore`. Cuando la app corre dentro de Compose usa la red interna (`@db:5432`); el puerto `5433` del host es para herramientas que corres en tu máquina (Prisma CLI / Studio).
+
+### Producción (variables de entorno de la Lambda)
+
+**No** se usa `.env` en producción. Las variables se configuran en la función Lambda (*Configuration → Environment variables*). El `DATABASE_URL` apunta a Neon:
+
+```
+DATABASE_URL=postgresql://<user>:<password>@<host>.sa-east-1.aws.neon.tech/<db>?sslmode=require
+```
+
+El resto (`JWT_SECRET_KEY`, `JWT_EXPIRES_IN`, `CORS_ORIGINS`, `NODE_ENV=production`) también se definen ahí. `PORT` no aplica en Lambda.
+
 ---
  
 ## Scripts del package.json
@@ -589,7 +610,7 @@ GitHub (push a main)
          ├─ docker push  -> Amazon ECR (repo: hop-backend)
          └─ aws lambda update-function-code  (función: hop-backend)
 
-API Gateway / Function URL  ─>  Lambda (hop-backend)  ─>  Express app  ─>  PostgreSQL (RDS)
+API Gateway / Function URL  ─>  Lambda (hop-backend)  ─>  Express app  ─>  Neon (PostgreSQL serverless)
 ```
 
 - **Región:** `sa-east-1`
@@ -649,9 +670,10 @@ El registry de ECR se compone como `${AWS_ACCOUNT_ID}.dkr.ecr.sa-east-1.amazonaw
 
 ### Variables de entorno en Lambda
 
-Las variables de `.env` (ver sección [Variables de entorno](#variables-de-entorno)) deben configurarse en la propia función Lambda (*Configuration → Environment variables*), ya que el `.env` no se incluye en la imagen. Como mínimo:
+Las variables se configuran en la propia función Lambda (*Configuration → Environment variables*), ya que el `.env` no se incluye en la imagen (ver [Variables de entorno](#variables-de-entorno)). Como mínimo:
 
-- `DATABASE_URL` — apuntando a la base PostgreSQL accesible desde Lambda (p. ej. RDS).
+- `DATABASE_URL` — cadena de **Neon** (PostgreSQL serverless) con `sslmode=require`:
+  `postgresql://<user>:<password>@<host>.sa-east-1.aws.neon.tech/<db>?sslmode=require`
 - `JWT_SECRET_KEY`, `JWT_EXPIRES_IN`
 - `CORS_ORIGINS`
 - `NODE_ENV=production`
