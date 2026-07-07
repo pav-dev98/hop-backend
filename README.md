@@ -304,12 +304,19 @@ Todos bajo `/api/v1`. Respuestas siempre en formato `{ success: boolean, data: a
  
 ### Autenticación (público)
 ```
-POST   /api/v1/auth/login
-POST   /api/v1/auth/register
-POST   /api/v1/auth/logout
-POST   /api/v1/auth/refresh
+POST   /api/v1/auth/login           → { token, refreshToken, user }
+POST   /api/v1/auth/register        → { token, refreshToken, user }
+POST   /api/v1/auth/logout          body: { refreshToken? } (lo revoca)
+POST   /api/v1/auth/refresh         body: { refreshToken } (rota y devuelve par nuevo)
 GET    /api/v1/auth/me              [JWT requerido]
 ```
+
+El access token (JWT) es corto (`JWT_EXPIRES_IN`, default 15m). Cuando expira,
+el cliente lo renueva con `POST /auth/refresh` enviando el refresh token (opaco,
+persistido hasheado en la tabla `refresh_tokens`, vigencia
+`REFRESH_TOKEN_EXPIRES_IN_DAYS`, default 30 días). Cada refresh **rota** el
+token: el usado queda revocado y reusar un token rotado revoca todas las
+sesiones del usuario. `POST /auth/logout` revoca el refresh token enviado.
  
 ### Houses
 ```
@@ -488,7 +495,8 @@ Copia `.env.example` a `.env`. El `DATABASE_URL` apunta a la base de docker-comp
 ```env
 DATABASE_URL=postgresql://peace:peace@localhost:5433/peace_houses
 JWT_SECRET_KEY=your-secret-key-min-32-chars
-JWT_EXPIRES_IN=24h
+JWT_EXPIRES_IN=15m
+REFRESH_TOKEN_EXPIRES_IN_DAYS=30
 FRONTEND_URL=http://localhost:5173
 CORS_ORIGINS=http://localhost:5173,http://localhost:3001
 PORT=3000
@@ -505,7 +513,7 @@ NODE_ENV=development
 DATABASE_URL=postgresql://<user>:<password>@<host>.sa-east-1.aws.neon.tech/<db>?sslmode=require
 ```
 
-El resto (`JWT_SECRET_KEY`, `JWT_EXPIRES_IN`, `CORS_ORIGINS`, `NODE_ENV=production`) también se definen ahí. `PORT` no aplica en Lambda.
+El resto (`JWT_SECRET_KEY`, `JWT_EXPIRES_IN`, `REFRESH_TOKEN_EXPIRES_IN_DAYS`, `CORS_ORIGINS`, `NODE_ENV=production`) también se definen ahí. `PORT` no aplica en Lambda.
 
 ---
  
@@ -674,7 +682,7 @@ Las variables se configuran en la propia función Lambda (*Configuration → Env
 
 - `DATABASE_URL` — cadena de **Neon** (PostgreSQL serverless) con `sslmode=require`:
   `postgresql://<user>:<password>@<host>.sa-east-1.aws.neon.tech/<db>?sslmode=require`
-- `JWT_SECRET_KEY`, `JWT_EXPIRES_IN`
+- `JWT_SECRET_KEY`, `JWT_EXPIRES_IN`, `REFRESH_TOKEN_EXPIRES_IN_DAYS`
 - `CORS_ORIGINS`
 - `NODE_ENV=production`
 

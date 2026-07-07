@@ -181,6 +181,19 @@ export const swaggerSpec = swaggerJsdoc({
             role: { type: 'string', enum: ['ADMIN', 'LEADER'] },
           },
         },
+        RefreshRequest: {
+          type: 'object',
+          required: ['refreshToken'],
+          properties: {
+            refreshToken: { type: 'string', description: 'Refresh token vigente (se rota en cada uso)' },
+          },
+        },
+        LogoutRequest: {
+          type: 'object',
+          properties: {
+            refreshToken: { type: 'string', description: 'Refresh token a revocar' },
+          },
+        },
         HouseInput: {
           type: 'object',
           required: ['name'],

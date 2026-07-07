@@ -36,8 +36,24 @@ model User {
   updatedAt      DateTime @updatedAt @map("updated_at")
 
   personalData   People   @relation(fields: [personalDataId], references: [id])
+  refreshTokens  RefreshToken[]
 
   @@map("users")
+}
+
+model RefreshToken {
+  id           Int       @id @default(autoincrement())
+  tokenHash    String    @unique @map("token_hash")
+  userId       Int       @map("user_id")
+  expiresAt    DateTime  @map("expires_at")
+  revokedAt    DateTime? @map("revoked_at")
+  replacedById Int?      @map("replaced_by_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
 }
 
 enum Role {

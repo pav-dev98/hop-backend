@@ -17,8 +17,16 @@ export const registerSchema = z.object({
 });
 
 export const refreshSchema = z.object({
-  token: z.string().min(1).optional(),
+  refreshToken: z.string().min(1),
+});
+
+// El refresh token es opcional en logout para no romper clientes viejos que
+// no envían body; sin token la revocación simplemente no aplica.
+export const logoutSchema = z.object({
+  refreshToken: z.string().min(1).optional(),
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
+export type RefreshInput = z.infer<typeof refreshSchema>;
+export type LogoutInput = z.infer<typeof logoutSchema>;

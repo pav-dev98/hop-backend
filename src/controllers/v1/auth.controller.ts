@@ -13,21 +13,16 @@ export async function register(req: Request, res: Response): Promise<void> {
 }
 
 /**
- * Logout: con JWT stateless no hay sesión que invalidar en el servidor.
- * El cliente descarta el token. Se responde OK por compatibilidad de contrato.
+ * Logout: revoca el refresh token recibido. El access token sigue siendo
+ * stateless (el cliente lo descarta y muere solo al expirar).
  */
-export async function logout(_req: Request, res: Response): Promise<void> {
+export async function logout(req: Request, res: Response): Promise<void> {
+  await authService.logout(req.body?.refreshToken);
   sendSuccess(res, { message: 'Logged out' });
 }
 
 export async function refresh(req: Request, res: Response): Promise<void> {
-  // currentUser viene del middleware authenticate.
-  const current = req.currentUser!;
-  const result = await authService.refresh({
-    userId: current.id,
-    email: current.email,
-    role: current.role,
-  });
+  const result = await authService.refresh(req.body.refreshToken);
   sendSuccess(res, result);
 }
 
