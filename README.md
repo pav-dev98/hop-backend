@@ -1,9 +1,5 @@
 # Peace Houses API — Node.js Migration
- 
-> **Instrucciones para Claude Code:** Este documento describe la migración completa de una API Ruby on Rails a Node.js + TypeScript. Construye el MVP siguiendo exactamente las especificaciones de stack, estructura, schema y endpoints descritos aquí. La API original en Rails ya está en producción; esta es una reescritura 1:1.
- 
----
- 
+
 ## Contexto del proyecto
  
 API RESTful para gestionar Casas de Paz (Peace Houses) de una iglesia. Maneja miembros, reuniones, asistencia, visitantes y reportes. La API original está en Ruby on Rails 8.1 en modo API con PostgreSQL.
